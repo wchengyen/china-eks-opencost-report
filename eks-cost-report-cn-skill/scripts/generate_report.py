@@ -505,7 +505,7 @@ def main():
     parser.add_argument('--window', default='1d', help='Time window (e.g. 1d, 7d, or absolute 2026-05-26T00:00:00Z,2026-05-27T00:00:00Z)')
     parser.add_argument('--offset', default='1d', help='Offset from now (e.g. 1d = yesterday)')
     parser.add_argument('--output', default=None, help='Output HTML file path')
-    parser.add_argument('--cny-rate', type=float, default=7.25, help='USD to CNY rate')
+    parser.add_argument('--cny-rate', type=float, default=1.0, help='USD to CNY rate (default 1.0 for AWS China, use 7.25 for standard USD->CNY conversion)')
     args = parser.parse_args()
 
     global CNY_RATE
