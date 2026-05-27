@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EKS 成本报告 - OpenCost 部署指南</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { color: #232F3E; border-bottom: 3px solid #FF9900; padding-bottom: 10px; }
+        h2 { color: #232F3E; margin-top: 30px; }
+        h3 { color: #5271FF; }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: "SFMono-Regular", Consolas, monospace;
+        }
+        pre {
+            background: #232F3E;
+            color: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .cmd { color: #7FDBFF; }
+        .yaml { color: #FF9900; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th { background: #232F3E; color: white; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .note {
+            background: #FFF3CD;
+            border-left: 4px solid #FFC107;
+            padding: 10px 15px;
+            margin: 15px 0;
+        }
+        .file-list {
+            background: #E8F4FD;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .file-list li { margin: 8px 0; }
+        a { color: #5271FF; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>EKS 成本报告 - OpenCost 部署指南</h1>
+        
+        <h2>目录</h2>
+        <ul>
+            <li><a href="#overview">系统概述</a></li>
+            <li><a href="#prerequisites">前置条件</a></li>
+            <li><a href="#deployment">部署步骤</a></li>
+            <li><a href="#configuration">配置说明</a></li>
+            <li><a href="#pricing">定价信息</a></li>
+            <li><a href="#usage">使用方法</a></li>
+            <li><a href="#troubleshooting">故障排查</a></li>
+        </ul>
+
+        <h2 id="overview">系统概述</h2>
+        <p>OpenCost 是一个开源的 Kubernetes 成本监控工具，支持：</p>
+        <ul>
+            <li>实时成本监控和分配</li>
+            <li>按 Namespace、Pod、Node 等维度分析成本</li>
+            <li>CPU 和 RAM 成本分离</li>
+            <li>Idle Cost（空闲资源成本）追踪</li>
+        </ul>
+
+        <h3>当前环境</h3>
+        <table>
+            <tr><th>项目</th><th>值</th></tr>
+            <tr><td>集群名称</td><td>chris-eks</td></tr>
+            <tr><td>区域</td><td>cn-northwest-1（中国宁夏）</td></tr>
+            <tr><td>节点类型</td><td>t3a.large（2 vCPU, 8GB）</td></tr>
+            <tr><td>节点数量</td><td>3</td></tr>
+            <tr><td>OpenCost 版本</td><td>1.118.0</td></tr>
+        </table>
+
+        <h2 id="prerequisites">前置条件</h2>
+        <ul>
+            <li>Kubernetes 集群已部署 Prometheus</li>
+            <li>kubectl 已配置并可访问集群</li>
+            <li>节点已启用 CloudWatch 监控</li>
+        </ul>
+
+        <h2 id="deployment">部署步骤</h2>
+
+        <h3>方法一：一键部署（推荐）</h3>
+        <pre><code class="cmd">kubectl apply -f opencost-all-in-one.yaml</code></pre>
+
+        <h3>方法二：分步部署</h3>
+        <pre><code class="cmd">kubectl apply -f opencost-namespace.yaml
+kubectl apply -f opencost-sa.yaml
+kubectl apply -f opencost-clusterrole.yaml
+kubectl apply -f opencost-clusterrolebinding.yaml
+kubectl apply -f opencost-service.yaml
+kubectl apply -f opencost-deployment.yaml</code></pre>
+
+        <h3>验证部署</h3>
+        <pre><code class="cmd">kubectl get pods -n opencost
+kubectl get svc -n opencost</code></pre>
+
+        <h2 id="configuration">配置说明</h2>
+
+        <h3>核心环境变量</h3>
+        <table>
+            <tr><th>变量名</th><th>说明</th><th>当前值</th></tr>
+            <tr><td>PROMETHEUS_SERVER_ENDPOINT</td><td>Prometheus 服务地址</td><td>http://prometheus.monitoring.svc:9090</td></tr>
+            <tr><td>AWS_PRICING_URL</td><td>AWS 中国区定价 API</td><td>https://pricing.cn-northwest-1.amazonaws.com.cn/...</td></tr>
+            <tr><td>CLUSTER_ID</td><td>集群标识</td><td>cluster-one</td></tr>
+            <tr><td>IDLE_ENABLED</td><td>启用空闲成本分离</td><td>true</td></tr>
+        </table>
+
+        <h3>Prometheus 配置要求</h3>
+        <p>OpenCost 依赖 Prometheus 抓取以下指标才能正确计算成本：</p>
+        <table>
+            <tr><th>Job</th><th>Target</th><th>必需指标</th><th>用途</th></tr>
+            <tr><td>opencost</td><td>opencost.opencost.svc:9003</td><td>node_cpu_hourly_cost<br>node_ram_hourly_cost<br>node_total_hourly_cost</td><td>节点定价数据源</td></tr>
+            <tr><td>kubernetes-cadvisor</td><td>kubelet /metrics/cadvisor</td><td>container_cpu_usage_seconds_total<br>container_memory_working_set_bytes</td><td>容器实际使用量</td></tr>
+        </table>
+        <div class="note">
+            <strong>重要：</strong>若未配置上述 scrape job，OpenCost 将只能显示 Disk 资产，Node 资产会缺失，且 allocation 成本会使用 fallback 默认价格（¥0.0316/vCPU）而非 AWS 实际价格（¥0.114/vCPU）。详见 <code>prometheus-config.yaml</code>。
+        </div>
+
+        <h3>端口说明</h3>
+        <table>
+            <tr><th>端口</th><th>用途</th></tr>
+            <tr><td>9003</td><td>OpenCost API</td></tr>
+            <tr><td>9090</td><td>OpenCost UI</td></tr>
+            <tr><td>8081</td><td>MCP 接口</td></tr>
+        </table>
+
+        <h2 id="pricing">定价信息</h2>
+
+        <h3>t3a.large 节点定价（中国宁夏区）</h3>
+        <table>
+            <tr><th>资源</th><th>单价</th><th>每小时</th><th>每天</th><th>每月</th></tr>
+            <tr><td>CPU</td><td>¥0.114/小时/vCPU</td><td>¥0.228 (2vCPU)</td><td>¥5.47</td><td>¥164.16</td></tr>
+            <tr><td>RAM</td><td>¥0.015/小时/GB</td><td>¥0.120 (8GB)</td><td>¥2.88</td><td>¥86.40</td></tr>
+            <tr><td><strong>总计</strong></td><td>-</td><td><strong>¥0.345</strong></td><td><strong>¥8.28</strong></td><td><strong>¥248.40</strong></td></tr>
+        </table>
+
+        <p><strong>费用拆分比例：</strong>CPU ~66% : RAM ~34%（基于 AWS 中国区 OnDemand 定价）</p>
+
+        <div class="note">
+            <strong>注意：</strong>¥0.345/小时 为 AWS 中国区 t3a.large OnDemand 实际价格。若 OpenCost 显示 CPU 单价为 ¥0.0316，说明使用了 fallback 默认价格，请检查 Prometheus 是否已配置抓取 OpenCost 指标。
+        </div>
+
+        <h2 id="usage">使用方法</h2>
+
+        <h3>查询节点成本</h3>
+        <pre><code class="cmd">kubectl exec -n opencost deploy/opencost -c opencost -- \
+  wget -qO- "http://localhost:9003/allocation/compute?window=1d&aggregate=node"</code></pre>
+
+        <h3>查询含 Idle Cost 的成本</h3>
+        <pre><code class="cmd">kubectl exec -n opencost deploy/opencost -c opencost -- \
+  wget -qO- "http://localhost:9003/allocation/compute?window=1d&aggregate=node&idle=true"</code></pre>
+
+        <h3>查询 Namespace 成本</h3>
+        <pre><code class="cmd">kubectl exec -n opencost deploy/opencost -c opencost -- \
+  wget -qO- "http://localhost:9003/allocation/compute?window=7d&aggregate=namespace"</code></pre>
+
+        <h3>查询资产（含 Node / Disk）</h3>
+        <pre><code class="cmd">kubectl exec -n opencost deploy/opencost -c opencost -- \
+  wget -qO- "http://localhost:9003/assets?window=1d"</code></pre>
+
+        <h3>访问 Web UI</h3>
+        <pre><code class="cmd">kubectl port-forward -n opencost svc/opencost 9090:9090</code></pre>
+        <p>然后访问：<code>http://localhost:9090</code></p>
+
+        <h2 id="troubleshooting">故障排查</h2>
+
+        <h3>Pod 无法启动</h3>
+        <pre><code class="cmd">kubectl logs -n opencost deploy/opencost -c opencost
+kubectl describe pod -n opencost -l app=opencost</code></pre>
+
+        <h3>无法连接 Prometheus</h3>
+        <p>检查 Prometheus 服务是否存在：</p>
+        <pre><code class="cmd">kubectl get svc -n monitoring prometheus</code></pre>
+
+        <h3>定价数据缺失</h3>
+        <p>验证 AWS Pricing URL 可访问：</p>
+        <pre><code class="cmd">curl -I https://pricing.cn-northwest-1.amazonaws.com.cn/offers/v1.0/cn/AmazonEC2/current/index.json</code></pre>
+
+        <h3>OpenCost 费用与 EC2 实际费用差异过大</h3>
+        <p>如果 <code>/allocation</code> 返回的 CPU 单价为 ¥0.0316（而非 ¥0.114），说明 Prometheus 未抓取 OpenCost 指标：</p>
+        <pre><code class="cmd"># 检查 Prometheus 是否抓取 opencost
+kubectl exec -n opencost deploy/opencost -c opencost -- \
+  wget -qO- 'http://prometheus.monitoring.svc:9090/api/v1/targets' | grep opencost
+
+# 检查 node_cpu_hourly_cost 指标是否存在
+kubectl exec -n opencost deploy/opencost -c opencost -- \
+  wget -qO- 'http://prometheus.monitoring.svc:9090/api/v1/query?query=node_cpu_hourly_cost'</code></pre>
+        <p>若结果为 0 条记录，请更新 Prometheus ConfigMap 并重启：</p>
+        <pre><code class="cmd">kubectl apply -f prometheus-config.yaml -n monitoring
+kubectl rollout restart deployment/prometheus -n monitoring</code></pre>
+
+        <h2>文件清单</h2>
+        <div class="file-list">
+            <ul>
+                <li><code>opencost-all-in-one.yaml</code> - 完整部署文件（推荐）</li>
+                <li><code>opencost-namespace.yaml</code> - Namespace 定义</li>
+                <li><code>opencost-deployment.yaml</code> - Deployment 配置</li>
+                <li><code>opencost-service.yaml</code> - Service 定义</li>
+                <li><code>opencost-sa.yaml</code> - ServiceAccount</li>
+                <li><code>opencost-clusterrole.yaml</code> - ClusterRole 权限</li>
+                <li><code>opencost-clusterrolebinding.yaml</code> - ClusterRoleBinding</li>
+                <li><code>prometheus-config.yaml</code> - <strong>Prometheus Scrape 配置（含 opencost + cadvisor）</strong></li>
+                <li><code>opencost-full.yaml</code> - 完整备份（含运行时状态）</li>
+            </ul>
+        </div>
+
+        <h2>更新历史</h2>
+        <table>
+            <tr><th>日期</th><th>变更</th></tr>
+            <tr><td>2026-05-25</td><td>修正定价信息（¥0.097 → ¥0.345/小时）<br>新增 prometheus-config.yaml（含 opencost + cadvisor scrape）<br>移除不必要的 CLOUD_PROVIDER_API_KEY<br>更新故障排查：添加成本差异排查说明</td></tr>
+            <tr><td>2026-05-22</td><td>启用 IDLE_ENABLED 环境变量，支持空闲成本分离</td></tr>
+            <tr><td>2025-05-13</td><td>初始部署 OpenCost 1.118.0</td></tr>
+        </table>
+
+        <hr>
+        <p style="color: #666; text-align: center;">
+            文档生成时间: 2026-05-22 | 
+            <a href="https://opencost.io" target="_blank">OpenCost 官网</a>
+        </p>
+    </div>
+</body>
+</html>
