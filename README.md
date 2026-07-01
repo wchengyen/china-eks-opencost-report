@@ -1,5 +1,7 @@
 # EKS 成本報告 - OpenCost 部署指南
 
+> [English Version](README_EN.md)
+
 ## 目錄
 
 - [系統概述](#系統概述)
@@ -230,17 +232,7 @@ kubectl exec -n opencost deploy/opencost -c opencost -- \
 
 ### 訪問 Web UI
 
-#### 方式一：通過 NLB (推薦用於外部訪問)
-
-已配置 NLB `opencost-ui-elb`，可直接通過以下地址訪問：
-
-```
-http://a86ede210ee1b45cc920f71a045d04e7-a93add39326ec13e.elb.cn-northwest-1.amazonaws.com.cn:9090
-```
-
-**注意：** `opencost-ui` 容器必須聲明 `containerPort: 9090`，否則 NLB 無法將流量路由到容器。
-
-#### 方式二：通過端口轉發 (本地調試)
+#### 通過端口轉發 (本地調試)
 
 ```bash
 kubectl port-forward -n opencost svc/opencost 9090:9090
@@ -264,12 +256,11 @@ cd eks-cost-report-cn-skill/scripts/
 kubectl port-forward svc/opencost 9003:9003 -n opencost &
 
 # 3. 生成昨日報告（AWS China 模式，直接輸出 CNY）
-python3 generate_report.py --window 1d --offset 1d --cny-rate 1.0
+python3 generate_report.py --window 1d --offset 1d
 
 # 4. 生成指定時間範圍報告
 python3 generate_report.py \
   --window "2026-05-26T00:00:00Z,2026-05-27T00:00:00Z" \
-  --cny-rate 1.0 \
   --output report-2026-05-26.html
 ```
 
@@ -279,7 +270,7 @@ python3 generate_report.py \
 |------|--------|------|
 | `--window` | `1d` | 時間窗口，支援相對時間 (`1d`, `7d`) 或絕對時間 (`2026-05-26T00:00:00Z,2026-05-27T00:00:00Z`) |
 | `--offset` | `1d` | 相對於當前的偏移量（`1d` = 昨天） |
-| `--cny-rate` | `7.25` | **AWS China 請設為 `1.0`**（OpenCost 直接輸出 CNY 數值） |
+| `--cny-rate` | `1.0` | OpenCost AWS China 直接輸出 CNY 數值，預設 1.0 無需轉換；若為非中國區 USD 輸出可設為對應匯率 |
 | `--output` | `opencost-report-{date}.html` | 輸出 HTML 檔案路徑 |
 
 ### 報告內容
@@ -289,14 +280,6 @@ python3 generate_report.py \
 - **Idle 成本**：未被使用的閒置資源成本
 - **Node / Namespace / Service / Pod** 多維度表格
 - Chart.js 圖表（Namespace 分佈、成本組成）
-
-### 已知問題
-
-| 問題 | 說明 | 解決方案 |
-|------|------|---------|
-| AWS China 貨幣 Bug | OpenCost 讀取 CNY 定價但視為 USD 數值，導致成本膨脹 ~7.25x | 使用 `--cny-rate 1.0` 直接將輸出視為 CNY |
-| 數據延遲（1d 窗口） | OpenCost 可能只累積數小時數據，非完整 24 小時 | 檢查 `minutes` 欄位，或使用較長窗口 |
-| `<no-node>` 條目 | 未掛載 PVC 會產生極小額 pvCost | 腳本已自動排除 |
 
 ### 參考文件
 
